@@ -1,0 +1,6 @@
+make --dry-run --always-make --keep-going --print-directory
+make: Entering directory '/home/masashi/workspace/db/untrust-dbms'
+make: Leaving directory '/home/masashi/workspace/db/untrust-dbms'
+ 
+make: *** No targets.  Stop.
+
