@@ -4,6 +4,7 @@
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include "c_user_types.h"
 #include "magic_enum.hpp"
 #include "util.h"
 
@@ -262,9 +263,9 @@ IdentList* Parser::QueryParser::definitionTableColumnParse() {
                 tailIdent->type_size = (uint16_t)dataType.second;
                 // ident attribute
                 if (isTokenTypeInc(TokenType::ENCRYPT)) {
-                    tailIdent->ident_attribute = IdentAttribute::ENCRYPT;
+                    tailIdent->ident_attribute = IdentAttribute::SECRET;
                 } else {
-                    tailIdent->ident_attribute = IdentAttribute::PLAIN;
+                    tailIdent->ident_attribute = IdentAttribute::NORMAL;
                 }
 
                 if (isTokenTypeInc(TokenType::RBRACE)) {

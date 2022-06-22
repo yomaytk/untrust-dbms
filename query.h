@@ -2,7 +2,6 @@
 #define _QUERY_H_
 
 #include <string>
-#include "Enclave_u.h"
 #include "bufferManager.h"
 #include "parser.h"
 

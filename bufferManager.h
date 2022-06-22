@@ -6,7 +6,7 @@
 #include <memory>
 #include <unordered_map>
 #include <vector>
-#include "Enclave_u.h"
+#include "c_user_types.h"
 #include "util.h"
 
 typedef uint64_t Oid;
@@ -160,10 +160,10 @@ typedef struct ColumnTuple {
           type(data_type),
           type_size(type_size_arg) {
         switch (ident_attribute) {
-            case IdentAttribute::ENCRYPT:
+            case IdentAttribute::SECRET:
                 attribute = ColumnAttribute::ENCRYPT;
                 break;
-            case IdentAttribute::PLAIN:
+            case IdentAttribute::NORMAL:
                 attribute = ColumnAttribute::PLAIN;
                 break;
             default:

@@ -2,7 +2,6 @@
 #define _RUN_H_
 
 #include <string>
-#include "Enclave_u.h"
 #include "query.h"
 
 enum class QUERY_PROCESS_RESULT { SUCCESS = 1111, FAILED, DEBUG_END, EXIT };

@@ -6,6 +6,8 @@
 #include "bufferManager.h"
 #include "util.h"
 
+extern bool NO_STDOUT;
+
 EXIT_PROCESS continue_or_end(QueryType qtype) {
     switch (qtype) {
         case SELECT:
@@ -57,28 +59,31 @@ std::vector<std::vector<std::vector<FieldData*>>> QueryExecutor::selectSecScanEx
         }
         all_page_data_list.push_back(page_data);
     }
-    for (int i = 0; (__SIZE_TYPE__)i < all_page_data_list.size(); ++i) {
-        std::cout << "page: " << i << std::endl;
-        auto page_data = all_page_data_list[i];
-        for (int j = 0; (__SIZE_TYPE__)j < page_data.size(); ++j) {
-            std::cout << "record " << j << ": ";
-            auto tuple_data = page_data[j];
-            for (int k = 0; (__SIZE_TYPE__)k < tuple_data.size(); ++k) {
-                switch (tuple_data[k]->data_type) {
-                    case DataType::INT:
-                        std::cout << tuple_data[k]->field_name << ": "
-                                  << *(int*)tuple_data[k]->data;
-                        break;
-                    case DataType::STRING:
-                        std::cout << tuple_data[k]->field_name << ": " << tuple_data[k]->data;
-                        break;
-                    default:
-                        debug_error("selectSecScanExec undefined DataType error-2.\n");
-                        break;
+    if (!NO_STDOUT) {
+        for (int i = 0; (__SIZE_TYPE__)i < all_page_data_list.size(); ++i) {
+            std::cout << "page: " << i << std::endl;
+            auto page_data = all_page_data_list[i];
+            for (int j = 0; (__SIZE_TYPE__)j < page_data.size(); ++j) {
+                std::cout << "record " << j << ": ";
+                auto tuple_data = page_data[j];
+                for (int k = 0; (__SIZE_TYPE__)k < tuple_data.size(); ++k) {
+                    switch (tuple_data[k]->data_type) {
+                        case DataType::INT:
+                            std::cout << tuple_data[k]->field_name << ": "
+                                      << *(int*)tuple_data[k]->data;
+                            break;
+                        case DataType::STRING:
+                            std::cout << tuple_data[k]->field_name << ": "
+                                      << (char*)tuple_data[k]->data;
+                            break;
+                        default:
+                            debug_error("selectSecScanExec undefined DataType error-2.\n");
+                            break;
+                    }
+                    if ((__SIZE_TYPE__)k + 1 < tuple_data.size()) std::cout << ',';
                 }
-                if ((__SIZE_TYPE__)k + 1 < tuple_data.size()) std::cout << ',';
+                std::cout << std::endl;
             }
-            std::cout << std::endl;
         }
     }
     return all_page_data_list;

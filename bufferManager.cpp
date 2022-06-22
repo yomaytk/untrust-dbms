@@ -18,7 +18,7 @@
 extern bool PRODUCTION;
 
 const uint16_t UINT16_BYTE_SIZE = 2;
-std::string PROJECT_PATH        = "/home/masashi/workspace/sgx/sgx-dbms/";
+std::string PROJECT_PATH        = "/home/masashi/workspace/db/untrust-dbms/";
 const char* SCHEMA_FILE_NAME    = "SCHEMA";
 
 inline bool BufferTag::operator==(const BufferTag& rhs) const {
@@ -307,24 +307,24 @@ BufferManager::getPageAllTupleUserData(const char* table_name, IdentList* column
          (uint8_t*)line_pos_ptr - page_start_ptr != pd_lower; ++line_pos_ptr) {
         page_all_tuple_user_data.push_back({});
         uint8_t* tuple_ptr     = page_start_ptr + *line_pos_ptr;
-        uint16_t user_data_num = *(uint16_t*)(tuple_ptr);
-        uint8_t* user_data_start_ptr =
-            tuple_ptr + (uint64_t)(UINT16_BYTE_SIZE + UINT16_BYTE_SIZE * user_data_num);
-        // operate every user_data in tuple
-        for (int i = 1; i <= user_data_num; ++i) {
-            if (NULL == column_id_map[i]) {
+        uint8_t* tuple_end_ptr = (uint16_t*)(page_start_ptr + sizeof(HeapHeaderInfo)) < line_pos_ptr
+                                     ? page_start_ptr + *(line_pos_ptr - 1)
+                                     : page_start_ptr + PAGE_TABLE_SIZE;
+        uint16_t field_data_num = *(uint16_t*)(tuple_ptr);
+        // operate every user_data in tuple, and collect target column data
+        for (int field_id = 1; field_id <= field_data_num; ++field_id) {
+            if (NULL == column_id_map[field_id]) {
                 continue;
             }
-            uint16_t field_start_pos = *((uint16_t*)tuple_ptr + i);
-            uint16_t field_end_pos   = (uint16_t)(user_data_start_ptr - tuple_ptr);
-            if (i < user_data_num) {
-                field_end_pos = *((uint16_t*)tuple_ptr + i + 1);
-            }
-            uint16_t user_data_size   = field_end_pos - field_start_pos;
-            uint8_t* target_user_data = (uint8_t*)calloc(1, user_data_size);
-            memcpy(target_user_data, tuple_ptr + field_start_pos, user_data_size);
-            page_all_tuple_user_data.back().push_back(
-                std::make_pair(column_id_map[i], std::make_pair(target_user_data, user_data_size)));
+            uint16_t field_start_pos = *((uint16_t*)tuple_ptr + field_id);
+            uint16_t field_end_pos   = field_id < field_data_num
+                                         ? *((uint16_t*)tuple_ptr + field_id + 1)
+                                         : (uint16_t)(tuple_end_ptr - tuple_ptr);
+            uint16_t field_data_size   = field_end_pos - field_start_pos;
+            uint8_t* target_field_data = (uint8_t*)calloc(1, field_data_size + 1);
+            memcpy(target_field_data, tuple_ptr + field_start_pos, field_data_size);
+            page_all_tuple_user_data.back().push_back(std::make_pair(
+                column_id_map[field_id], std::make_pair(target_field_data, field_data_size)));
         }
         if ((uint8_t*)line_pos_ptr - page_start_ptr > pd_lower) {
             debug_error("line_pos > pd_lower error.\n");
@@ -403,7 +403,6 @@ void BufferManager::insertOneTupleToOnlyTable(ValueList* value_list, const char*
 
 void BufferManager::addNewTableToBuffer(const char* table_name, IdentList* ident_list) {
     if (!PRODUCTION) BufferManager::createDataFile(SCHEMA_FILE_NAME);
-
     // generate random number for RelNode;
     std::random_device rd;
     std::mt19937_64 e2(rd());
@@ -557,9 +556,4 @@ void BufferManager::getAllTableToCache() {
         }
     }
     table_info_flags = PageFlags::VALID;
-}
-
-void ocall_allocate_page(struct TableAttribute* tableAttribute, uint64_t page_id) {
-    std::cout << "ocall_allocate_page trash code." << tableAttribute->row_nums << page_id
-              << std::endl;
 }
