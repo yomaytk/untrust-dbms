@@ -1,13 +1,13 @@
+#include <pwd.h>
+#include <unistd.h>
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <thread>
-
-#include <pwd.h>
-#include <unistd.h>
 #define MAX_PATH FILENAME_MAX
 
 #include "query.h"
@@ -58,6 +58,7 @@ int main(int argc, char* argv[]) {
     // }
 
     if (TID == 1) {
+        auto start = std::chrono::system_clock::now();
         // transaction_id: 1
         {
             // create
@@ -87,7 +88,12 @@ int main(int argc, char* argv[]) {
                 query_process_run->run(query);
             }
         }
+        auto end = std::chrono::system_clock::now();
+        double process_time =
+            std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        std::cout << "PROCESS(TID: 1) TIME: " << process_time << std::endl;
     } else if (TID == 2) {
+        auto start = std::chrono::system_clock::now();
         // transaction_id: 2
         {
             // create
@@ -100,7 +106,7 @@ int main(int argc, char* argv[]) {
             }
             // insert
             {
-                int insert_num = 500;
+                int insert_num = 3000;
                 for (int i = 0; i < insert_num; ++i) {
                     std::string query =
                         "insert into STUDENT (id, name, university, club) values (" +
@@ -121,6 +127,10 @@ int main(int argc, char* argv[]) {
                 query_process_run->run(query);
             }
         }
+        auto end = std::chrono::system_clock::now();
+        double process_time =
+            std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        std::cout << "PROCESS(TID: 2) TIME: " << process_time << std::endl;
     }
 
 query_loop_end:
