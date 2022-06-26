@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
             }
             // insert
             {
-                int insert_num = 3000;
+                int insert_num = 1000;
                 for (int i = 0; i < insert_num; ++i) {
                     std::string query =
                         "insert into STUDENT (id, name, university, club) values (" +

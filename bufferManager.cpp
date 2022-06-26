@@ -65,21 +65,29 @@ void BufferManager::createDataFile(const char* table_name) {
 
 BufferId BufferManager::getDataEntry(BufferTag& buffer_tag) {
     if (data_entry_hash.contains(buffer_tag)) {
-        return BufferId{data_entry_hash[buffer_tag]};
+        auto bucket_slot_id    = data_entry_hash[buffer_tag];
+        auto target_data_entry = buffer_table->bucket_slots[bucket_slot_id];
+        for (;; target_data_entry = target_data_entry->data_entry) {
+            if (target_data_entry->tag == buffer_tag) break;
+            if (target_data_entry->data_entry == nullptr) {
+                debug_error("no data entry for target buffer tag.\n");
+            }
+        }
+        return target_data_entry->buffer_id;
     }
 
     // insert Tag and slot_id to buffer table
     uint32_t target_tag_slot_id = buffer_table->next_slot_id;
-    BufferId buffer_id          = setNewBufferDescripter(buffer_tag);
+    BufferId buffer_id          = setNewBufferDescriptor(buffer_tag);
     auto new_data_entry = std::make_shared<DataEntry>(DataEntry{buffer_tag, buffer_id, nullptr});
     if (buffer_table->bucket_slots[target_tag_slot_id] == nullptr) {
         buffer_table->bucket_slots[target_tag_slot_id] = new_data_entry;
     } else {
-        auto data_entry_ptr = buffer_table->bucket_slots[target_tag_slot_id];
-        for (; data_entry_ptr->data_entry != nullptr;) {
-            data_entry_ptr = data_entry_ptr->data_entry;
+        auto cur_data_entry = buffer_table->bucket_slots[target_tag_slot_id];
+        for (; cur_data_entry->data_entry != nullptr;) {
+            cur_data_entry = cur_data_entry->data_entry;
         }
-        auto last_data_entry        = data_entry_ptr;
+        auto last_data_entry        = cur_data_entry;
         last_data_entry->data_entry = new_data_entry;
     }
 
@@ -95,7 +103,7 @@ BufferId BufferManager::getDataEntry(BufferTag& buffer_tag) {
     return buffer_id;
 }
 
-BufferId BufferManager::setNewBufferDescripter(BufferTag& buffer_tag) {
+BufferId BufferManager::setNewBufferDescriptor(BufferTag& buffer_tag) {
     struct TargetBufferDescriptor {
        private:
         uint16_t target_buffer_id   = -1;
@@ -111,12 +119,13 @@ BufferId BufferManager::setNewBufferDescripter(BufferTag& buffer_tag) {
     } victim_buffer_descriptor;
 
     // find victim page
+    victim_buffer_descriptor.set(buffer_descriptor[0].buffer_id.id, buffer_descriptor[0].ref_count);
     for (uint16_t i = 0; i < PAGE_NUMS; i++) {
         if (buffer_descriptor[i].ref_count == 0) {
             victim_buffer_descriptor.set(i, 1);
             break;
         }
-        if (buffer_descriptor[i].ref_count == 0 &&
+        if (buffer_descriptor[i].ref_count > 0 &&
             buffer_descriptor[i].usage_count < victim_buffer_descriptor.read_usage_count()) {
             victim_buffer_descriptor.set(i, buffer_descriptor[i].usage_count);
         }
@@ -126,6 +135,13 @@ BufferId BufferManager::setNewBufferDescripter(BufferTag& buffer_tag) {
     // if victim descriptor is dirty, need to page flush.
     if (buffer_descriptor[victim_buffer_descriptor.read_id()].flags == PageFlags::DIRTY) {
         pageFlush(victim_buffer_descriptor.read_id());
+    }
+
+    // delete victim page information
+    if (buffer_descriptor[victim_buffer_descriptor.read_id()].flags == PageFlags::VALID) {
+        data_entry_hash.erase(buffer_descriptor[victim_buffer_descriptor.read_id()].tag);
+        buffer_pool[victim_buffer_descriptor.read_id()]       = {0};
+        buffer_descriptor[victim_buffer_descriptor.read_id()] = {0};
     }
 
     BufferId buffer_id                     = BufferId{victim_buffer_descriptor.read_id()};
@@ -153,7 +169,7 @@ std::pair<Oid, Oid> BufferManager::getTableOid(const char* table_name) {
 void BufferManager::setPageToBufferPool(BufferTag& buffer_tag, BufferId* buffer_id) {
     auto table_size = getTablePageSize(buffer_tag.table_ident);
     // need new page
-    if (table_size <= buffer_tag.heap_file_block_id * PAGE_TABLE_SIZE) {
+    if (table_size < (buffer_tag.heap_file_block_id + 1) * PAGE_TABLE_SIZE) {
         // set default HeapHeaderInfo
         buffer_pool[buffer_id->id].heap_header_info.pd_lsn      = 0;
         buffer_pool[buffer_id->id].heap_header_info.pd_checksum = 0;
@@ -171,7 +187,7 @@ void BufferManager::setPageToBufferPool(BufferTag& buffer_tag, BufferId* buffer_
         ifs.seekg(buffer_tag.heap_file_block_id * PAGE_TABLE_SIZE, std::ios::beg);
         ifs.read(reinterpret_cast<char*>(&buffer_pool[buffer_id->id]), PAGE_TABLE_SIZE);
         if (ifs.fail()) {
-            debug_error("Failed to read the file at setpageToBufferPool.\n");
+            debug_error("Failed to read the file at setPageToBufferPool.\n");
         }
     }
 }
@@ -202,6 +218,8 @@ void BufferManager::pageFlush(uint16_t buffer_id) {
     ofs.close();
 
     buffer_descriptor[buffer_id].flags = PageFlags::VALID;
+
+    // std::cout << "pageFlush buffer id: " << buffer_id << std::endl;
 }
 
 void BufferManager::tablePageFlush() {
@@ -239,19 +257,26 @@ uint64_t BufferManager::getTablePageNum(const char* table_name) {
 
         if (fgetpos(fp, &pos) == 0) {
             fclose(fp);
-            page_num = (uint64_t)std::max((long)pos.__pos - 1, (long)0) / PAGE_TABLE_SIZE;
+            page_num = (uint64_t)(std::max((long)pos.__pos, (long)0) / PAGE_TABLE_SIZE);
+            // std::cout << "page_nummmmmmmmmmmmmmmmmmmmmmmmm: " << page_num << std::endl;
         }
     }
 
     for (const auto& [buffer_tag, _] : data_entry_hash) {
         if (!strcmp(buffer_tag.table_ident, table_name)) {
-            page_num = (uint64_t)std::max(page_num, (uint64_t)(buffer_tag.heap_file_block_id + 1));
+            if (page_num < (uint64_t)(buffer_tag.heap_file_block_id + 1))
+                // std::cout << "ggggggggggggtttttttttttt!@!!!\n";
+                page_num =
+                    (uint64_t)std::max(page_num, (uint64_t)(buffer_tag.heap_file_block_id + 1));
         }
     }
+
+    // std::cout << "pppppppppppppppppppppppage_num: " << page_num << std::endl;
     return page_num;
 }
 
 uint64_t BufferManager::getTablePageSize(const char* table_name) {
+    uint64_t page_size      = __LONG_LONG_MAX__;
     std::string table_ident = std::string(table_name);
     FILE* fp                = fopen((PROJECT_PATH + table_ident).c_str(), "rb");
 
@@ -265,13 +290,20 @@ uint64_t BufferManager::getTablePageSize(const char* table_name) {
 
         if (fgetpos(fp, &pos) == 0) {
             fclose(fp);
-            return (uint64_t)pos.__pos;
+            page_size = (uint64_t)pos.__pos;
         }
     }
 
-    fclose(fp);
-    debug_error("getTablePageSize error.\n");
-    return __LONG_LONG_MAX__;
+    for (const auto& [buffer_tag, _] : data_entry_hash) {
+        if (!strcmp(buffer_tag.table_ident, table_name)) {
+            page_size = (uint64_t)std::max(
+                page_size, (uint64_t)(PAGE_TABLE_SIZE * (buffer_tag.heap_file_block_id + 1)));
+        }
+    }
+
+    // debug_error("getTablePageSize error.\n");
+
+    return page_size;
 }
 
 const std::vector<
@@ -338,8 +370,9 @@ void BufferManager::insertOneTupleToOnlyTable(ValueList* value_list, const char*
     if (!PRODUCTION) BufferManager::createDataFile(table_name);
     auto table_oid = BufferManager::getTableOid(table_name);  // ->first: db_oid, ->second: rel_oid
     uint64_t last_page_id = getTablePageNum(table_name);
-    // Prevent bugs when the pagenum is 0
+    // Prevent bugs when the page num is 0
     if (last_page_id > 0) --last_page_id;
+    // std::cout << "last_page_id: " << last_page_id << std::endl;
 
     BufferTag buffer_tag =
         BufferTag{table_oid.first, table_oid.second, 0, last_page_id, table_name};

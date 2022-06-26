@@ -236,7 +236,7 @@ class BufferManager {
     void tablePageFlush();
 
    private:
-    BufferId setNewBufferDescripter(BufferTag& buffer_tag);
+    BufferId setNewBufferDescriptor(BufferTag& buffer_tag);
     void pageFlush(uint16_t buffer_id);
     void setPageToBufferPool(BufferTag& buffer_tag, BufferId* buffer_id);
 };
